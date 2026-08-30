@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JARVIS V6 — NVIDIA INTELLIGENCE CORE</title>
+    <style>
+        :root { --cyan: #00ffff; --dark-bg: #0c0c0c; --panel-bg: #111111; --border-color: #333333; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--dark-bg); color: #fff; font-family: monospace; padding: 20px; overflow-x: hidden; }
+        
+        /* Core UI Workspace Grid Layout */
+        .workspace { display: grid; grid-template-columns: 260px 1fr; gap: 20px; height: calc(100vh - 80px); }
+        .sidebar { background: var(--panel-bg); border: 1px solid var(--border-color); padding: 15px; display: flex; flex-direction: column; gap: 15px; }
+        .main-terminal { display: flex; flex-direction: column; gap: 15px; background: var(--panel-bg); border: 1px solid var(--border-color); padding: 20px; position: relative; }
+        
+        /* Terminal UI Output Elements */
+        #chatel { flex: 1; overflow-y: auto; padding: 15px; background: #070707; border: 1px solid var(--border-color); font-size: 14px; line-height: 1.5; box-shadow: inset 0 0 10px rgba(0,255,255,0.05); }
+        .bubble-wrap { margin-bottom: 12px; display: flex; flex-direction: column; }
+        .bubble-user { color: #ffffff; padding-left: 5px; border-left: 2px solid #555; }
+        .bubble-jarvis { color: var(--cyan); padding-left: 5px; border-left: 2px solid var(--cyan); text-shadow: 0 0 4px rgba(0,255,255,0.2); }
+        
+        /* Diagnostics Telemetry Elements */
+        .telemetry-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #222; font-size: 12px; }
+        .ind { width: 8px; height: 8px; display: inline-block; border-radius: 50%; background: #444; margin-right: 6px; box-shadow: 0 0 2px #000; }
+        .ind-active { background: #00ff00; box-shadow: 0 0 8px #00ff00; }
+        .ind-warn { background: #ffff00; box-shadow: 0 0 8px #ffff00; }
+        .ind-error { background: #ff0000; box-shadow: 0 0 8px #ff0000; }
+        .ind-idle { background: #888888; box-shadow: 0 0 4px #888888; }
+        
+        /* Dynamic Controls */
+        textarea { width: 100%; background: #050505; color: #fff; border: 1px solid var(--border-color); padding: 12px; resize: none; font-family: monospace; font-size: 13px; line-height: 1.4; outline: none; transition: border-color 0.2s; }
+        textarea:focus { border-color: var(--cyan); }
+        .action-row { display: flex; gap: 10px; align-items: center; }
+        button { background: #1a1a1a; color: var(--cyan); border: 1px solid var(--cyan); padding: 8px 14px; cursor: pointer; font-family: monospace; font-size: 12px; text-transform: uppercase; transition: all 0.2s; }
+        button:hover { background: var(--cyan); color: #000; box-shadow: 0 0 10px rgba(0,255,255,0.3); }
+        button.recording { background: #aa0000; color: #fff; border-color: #ff0000; animation: pulse 1.5s infinite; }
+        
+        /* Error Layout Overlays */
+        #system-failure-banner { display: none; background: #3a0505; padding: 15px; border: 1px solid #ff0000; margin-top: 15px; box-shadow: 0 0 15px rgba(255,0,0,0.2); }
+        #system-failure-banner h3 { color: #ff3333; margin-bottom: 5px; font-size: 14px; letter-spacing: 1px; }
+        
+        /* Layout Subcomponents */
+        .sidebar-nav-item { padding: 8px; background: #151515; border: 1px solid #222; font-size: 11px; color: #888; cursor: pointer; }
+        .sidebar-nav-item:hover { color: #fff; border-color: #444; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <header style="margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 10px;">
+        <h2 style="letter-spacing: 2px; font-size: 18px; color: #eee;">JARVIS <span style="font-size: 11px; color: var(--cyan); vertical-align: super;">V6.0.4</span></h2>
+        <p style="font-size: 10px; color: #666; margin-top: 2px;">ADVANCED RESPONSE & INTELLIGENCE SYSTEM — BROADCAST RUNTIME</p>
+    </header>
+
+    <div class="workspace">
+        <aside class="sidebar">
+            <div style="font-size: 11px; color: #aaa; letter-spacing: 1px; font-weight: bold; border-bottom: 1px solid #222; padding-bottom: 5px;">SYSTEM TELEMETRY</div>
+            <div class="telemetry-row"><span>◈ OPERATOR STATUS</span><span style="color:var(--cyan)">ONLINE</span></div>
+            <div class="telemetry-row"><span>◈ HARDWARE DIAGS</span><div><span id="indSys" class="ind"></span><span style="font-size:10px;color:#aaa">SYS</span></div></div>
+            <div class="telemetry-row"><span>◈ NETWORK LINK</span><div><span id="indNet" class="ind"></span><span style="font-size:10px;color:#aaa">NET</span></div></div>
+            <div class="telemetry-row"><span>◈ INTERFACE ACCESS</span><div><span id="indApi" class="ind"></span><span style="font-size:10px;color:#aaa">API</span></div></div>
+            <div class="telemetry-row"><span>◈ CORE ENGINE</span><span style="color:#aaa">LLAMA-3.3-70B</span></div>
+            <div class="telemetry-row"><span>◈ TOTAL MESSAGES</span><span id="msgCountDisp" style="color:var(--cyan)">0</span></div>
+            <div class="telemetry-row"><span>◈ RUNTIME UPTIME</span><span id="uptimeDisp" style="color:#888">00:00</span></div>
+            <div class="telemetry-row"><span>◈ VOICE OUTPUT</span><span id="voiceStatusDisp" style="color:#00ff00">ACTIVE</span></div>
+            
+            <div style="font-size: 11px; color: #aaa; letter-spacing: 1px; font-weight: bold; border-bottom: 1px solid #222; padding-bottom: 5px; margin-top: 10px;">SYSTEM INDEX</div>
+            <div class="sidebar-nav-item">thing.html</div>
+            <div class="sidebar-nav-item">robot head.txt</div>
+            <div class="sidebar-nav-item">goose.html</div>
+            <div class="sidebar-nav-item">jarvis's script.html</div>
+            <div class="sidebar-nav-item">micro AI.html</div>
+        </aside>
+
+        <main class="main-terminal">
+            <div id="chatel">
+                <div style="color:#555; font-size:12px; margin-bottom:15px; border-bottom:1px dashed #222; padding-bottom:5px;">SYSTEMS ONLINE — AWAITING OPERATOR CONNECTION INPUTS...</div>
+            </div>
+            
+            <textarea id="inputBox" placeholder="ENTER TO DISPATCH PROMPT · SHIFT+ENTER FOR NEW LINE TRANSCRIPT"></textarea>
+            
+            <div class="action-row">
+                <button id="micBtn">🎤 START LISTENING</button>
+                <button id="clearBtn" style="border-color:#555;color:#aaa;">CLEAR TERMINAL</button>
+            </div>
+            
+            <div id="system-failure-banner">
+                <h3>⚠️ SYSTEM INFRASTRUCTURE EXCEPTION</h3>
+                <p style="font-size:12px; margin-bottom:10px;">ERROR HOST CONNECTIVITY BLOCK DETECTED. CODE: <span id="error-code-disp" style="color:#ff3333; font-weight:bold;">NONE</span></p>
+                <button onclick="dismissFailure()" style="border-color:#ff3333; color:#ff3333; padding: 4px 8px; font-size:10px;">DISMISS WARNING</button>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    // =========================================================================
+    // ⚙️ SYSTEM PROMPT INFRASTRUCTURE (EASILY LOCATABLE AND EDITABLE)
+    // =========================================================================
+    const SYSTEM_PROMPT_TEXT = "You are JARVIS, an elite AI coding and reasoning companion. Address the operator Forrest with absolute technical clarity, precision, and an intelligent, calm, slightly formal demeanor.";
+    // =========================================================================
+
+    // Core application variables
+    let history = [];
+    let msgCount = 0;
+    let sessionStart = Date.now();
+    let allMessages = [];
+    let attachedImageB64 = null;
+    let attachedImageType = null;
+    let lastFailedMsg = null;
+
+    // Element binding mappings
+    const indSys = document.getElementById("indSys");
+    const indNet = document.getElementById("indNet");
+    const indApi = document.getElementById("indApi");
+    const chatel = document.getElementById("chatel");
+    const inputBox = document.getElementById("inputBox");
+    const micBtn = document.getElementById("micBtn");
+    const msgCountDisp = document.getElementById("msgCountDisp");
+    const uptimeDisp = document.getElementById("uptimeDisp");
+    // Update indicator states cleanly
+    function setInd(el, state) {
+        // States: 'active' (green) | 'warn' (yellow) | 'error' (red) | 'idle' (grey)
+        let colorClass = 'ind-idle';
+        if (state === 'active') colorClass = 'ind-active';
+        if (state === 'warn') colorClass = 'ind-warn';
+        if (state === 'error') colorClass = 'ind-error';
+        
+        el.className = 'ind ' + colorClass;
+    }
+
+    // Assert base core system states
+    setInd(indSys, 'active');
+    setInd(indApi, 'idle');
+
+    // Continuous polling check verifying local internet connection rules
+    async function checkNet() {
+        try {
+            const res = await fetch("https://www.gstatic.com/generate_204", {
+                method: "HEAD", 
+                cache: "no-store", 
+                signal: AbortSignal.timeout(4000)
+            });
+            setInd(indNet, (res.ok || res.status === 204) ? 'active' : 'warn');
+        } catch (err) {
+            setInd(indNet, 'error');
+        }
+    }
+
+    // Hook network interval runner loops
+    checkNet();
+    setInterval(checkNet, 8000);
+
+    // Runtime system execution clock logic
+    setInterval(() => {
+        const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+        const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const s = (elapsed % 60).toString().padStart(2, '0');
+        uptimeDisp.textContent = m + ':' + s;
+    }, 1000);
+
+    // Auto-resizing viewport rules for input boxes
+    inputBox.addEventListener('input', () => {
+        inputBox.style.height = 'auto';
+        inputBox.style.height = Math.min(inputBox.scrollHeight, 120) + 'px';
+    });
+
+    // Logging notification hooks
+    function setStatus(txt, color) {
+        console.log(`[JARVIS SYSTEM LOG]: ${txt}`);
+    }
+    // Text-to-Speech Vocal Synthesis Engine
+    const lttsOn = true;
+    function speak(text) {
+        if (!lttsOn || !window.speechSynthesis) return;
+        
+        // Clean out markdown code formatting tags to prevent spelling errors
+        let cleanText = text.replace(/```[\s\S]*?```/g, "[Code segment displayed on monitor]");
+        cleanText = cleanText.replace(/`([^`]+)`/g, "$1");
+        
+        if (cleanText.length > 350) {
+            cleanText = cleanText.substring(0, 320) + "... Data stream text limit reached for vocalization module.";
+        }
+        
+        try {
+            speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(cleanText);
+            u.rate = 1.05; 
+            u.pitch = 0.8;
+            speechSynthesis.speak(u);
+        } catch (e) {
+            console.error("Vocal processor synthesis fault:", e);
+        }
+    }
+
+    // Display infrastructure failure banners
+    function showSystemFailure(code) {
+        document.getElementById("system-failure-banner").style.display = "block";
+        document.getElementById("error-code-disp").textContent = code;
+        setInd(indApi, 'error');
+    }
+
+    // Dismiss runtime UI warning flags safely
+    function dismissFailure() {
+        document.getElementById("system-failure-banner").style.display = "none";
+        if (indApi.classList.contains('ind-error')) {
+            setInd(indApi, 'idle');
+        }
+    }
+    // Primary API Handler Core Function
+    async function callGroq(model, messages) {
+        // Direct compute endpoint targeting NVIDIA NIM microservices
+        const targetUrl = "https://nvidia.com";
+        
+        // Unrestricted, open mirror gateway wrapping to smash browser CORS barriers safely
+        const proxiedUrl = `https://allorigins.win{encodeURIComponent(targetUrl)}`;
+        
+        // Re-embedded active operational key string
+        const NVIDIA_KEY="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";
+
+        try {
+            setInd(indApi, 'warn');
+            const res = await fetch(proxiedUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + NVIDIA_KEY
+                },
+                body: JSON.stringify({
+                    model: "meta/llama-3.3-70b-instruct",
+                    messages: messages,
+                    temperature: 0.7,
+                    max_tokens: 1500
+                })
+            });
+
+            if (!res.ok) {
+                const textErr = await res.text();
+                throw new Error(`HTTP System Flag ${res.status}: ${textErr}`);
+            }
+
+            const data = await res.json();
+            setInd(indApi, 'active');
+            return data;
+        } catch (err) {
+            console.error("API pipeline processing error:", err);
+            showSystemFailure("API_UNREACHABLE");
+            throw err;
+        }
+    }
+
+    // =========================================================================
+    // 🎙️ SPEECH TO TEXT ENGINE (WEB SPEECH TRANSCRIPTION SUBSYSTEM)
+    // =========================================================================
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+            micBtn.textContent = "🛑 STOP CONSOLE CAPTURE";
+            micBtn.classList.add("recording");
+        };
+
+        recognition.onend = () => {
+            micBtn.textContent = "🎤 START LISTENING";
+            micBtn.classList.remove("recording");
+        };
+
+        recognition.onresult = (event) => {
+            if (event.results && event.results[0] && event.results[0][0]) {
+                const transcript = event.results[0][0].transcript;
+                inputBox.value = (inputBox.value + " " + transcript).trim();
+                inputBox.style.height = inputBox.scrollHeight + 'px';
+            }
+        };
+
+        micBtn.addEventListener("click", () => {
+            if (micBtn.classList.contains("recording")) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.error("Microphone hardware failed to lease:", e);
+                }
+            }
+        });
+    } else {
+        micBtn.textContent = "🎙️ Mic Hardware Blocked by Host Browser";
+        micBtn.disabled = true;
+    }
+    // Render message layouts text inside main terminal window elements
+    function appendMessage(role, text) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "bubble-wrap";
+        
+        const label = document.createElement("div");
+        label.style.fontSize = "10px";
+        label.style.color = "#444";
+        label.style.marginBottom = "2px";
+        label.textContent = role === "user" ? "◈ OPERATOR (FORREST)" : "◈ SYSTEM (JARVIS)";
+        
+        const bubble = document.createElement("div");
+        bubble.className = role === "user" ? "bubble-user" : "bubble-jarvis";
+        bubble.innerText = text;
+        
+        wrapper.appendChild(label);
+        wrapper.appendChild(bubble);
+        chatel.appendChild(wrapper);
+        
+        // Auto scrolling view tracking updates
+        chatel.scrollTop = chatel.scrollHeight;
+    }
+
+    // Main structural chat processing sequence loop
+    async function sendMessage() {
+        const text = inputBox.value.trim();
+        if (!text) return;
+        
+        // Reset console controls elements
+        inputBox.value = "";
+        inputBox.style.height = "auto";
+        dismissFailure();
+        
+        // Output prompt parameters to chat framework elements
+        appendMessage("user", text);
+        allMessages.push({ role: "user", content: text });
+        
+        msgCount++;
+        msgCountDisp.textContent = msgCount;
+        
+        // Combine system settings with runtime historical array contexts
+        const payload = [
+            { role: "system", content: SYSTEM_PROMPT_TEXT },
+            ...allMessages
+        ];
+
+        try {
+            const result = await callGroq("meta/llama-3.3-70b-instruct", payload);
+            
+            if (result && result.choices && result.choices[0] && result.choices[0].message) {
+                const reply = result.choices[0].message.content;
+                appendMessage("jarvis", reply);
+                allMessages.push({ role: "assistant", content: reply });
+                speak(reply);
+            } else {
+                throw new Error("Data model structure validation schema mismatch.");
+            }
+        } catch (e) {
+            console.error("Critical messaging stack processing error:", e);
+        }
+    }
+
+    // Bind terminal event listener actions
+    inputBox.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+        chatel.innerHTML = '<div style="color:#555; font-size:12px; margin-bottom:15px; border-bottom:1px dashed #222; padding-bottom:5px;">TERMINAL HISTORY PURGED — REINITIALIZING MATRIX...</div>';
+        allMessages = [];
+    });
+    </script>
+</body>
+</html>
